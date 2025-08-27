@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/public/index.php",
+      "use": "@vercel/php"
+    },
+    {
+      "src": "stock-management-frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "backend/public/index.php"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "stock-management-frontend/dist/$1"
+    }
+  ]
+}
