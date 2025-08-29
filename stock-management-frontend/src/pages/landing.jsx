@@ -35,7 +35,7 @@ export default function Landing() {
         </motion.div>
 
         <motion.img
-          src="src/assets/stock-management.jpeg"
+          src="/stock-management.jpeg"
           alt="Gestion de stock"
           className="md:w-1/2 rounded-3xl shadow-xl mb-8 md:mb-0"
           initial={{ opacity: 0, x: 60 }}
