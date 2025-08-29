@@ -4,6 +4,11 @@ import SupplierForm from "../../components/admin/SupplierForm";
 import Table from "../../components/admin/Table";
 import { Plus, Search, Edit, Trash2 } from "lucide-react";
 
+function buildBackendBase() {
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  return apiUrl.replace(/\/api\/?$/, "") || "http://127.0.0.1:8000";
+}
+
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState("");
@@ -23,7 +28,6 @@ export default function Suppliers() {
 
   useEffect(() => {
     fetchSuppliers();
-    // eslint-disable-next-line
   }, [search]);
 
   const handleEdit = (supplier) => {
@@ -32,10 +36,23 @@ export default function Suppliers() {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Supprimer ce fournisseur ?")) {
+    if (window.confirm("Supprimer ce fournisseur ?")) {
       await api.delete(`/fournisseurs/${id}`);
       fetchSuppliers();
     }
+  };
+
+  const getPhotoUrl = (supplier) => {
+    // 1) URL Cloudinary/absolue
+    if (supplier?.image && /^https?:\/\//i.test(supplier.image)) return supplier.image;
+    if (supplier?.image_url && /^https?:\/\//i.test(supplier.image_url)) return supplier.image_url;
+
+    // 2) Base backend depuis VITE_API_URL
+    const base = buildBackendBase();
+    if (supplier?.image_url) return supplier.image_url;
+    if (supplier?.image) return `${base}/storage/${supplier.image}`;
+
+    return null;
   };
 
   return (
@@ -61,41 +78,49 @@ export default function Suppliers() {
       </div>
       <Table
         columns={[
-          { label: "Photo", key: "photo" },
+          { 
+            label: "Photo", 
+            key: "photo",
+            render: (supplier) => getPhotoUrl(supplier) ? (
+              <img
+                src={getPhotoUrl(supplier)}
+                alt="photo"
+                className="h-10 w-10 rounded-full object-cover border"
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">
+                ?
+              </div>
+            )
+          },
           { label: "Nom", key: "nom" },
           { label: "Email", key: "email" },
           { label: "Téléphone", key: "telephone" },
           { label: "Adresse", key: "adresse" },
-          { label: "Actions", key: "actions" },
+          { 
+            label: "Actions", 
+            key: "actions",
+            render: (supplier) => (
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => handleEdit(supplier)}
+                  aria-label="Modifier"
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <Edit size={20} />
+                </button>
+                <button
+                  onClick={() => handleDelete(supplier.id)}
+                  aria-label="Supprimer"
+                  className="text-red-600 hover:text-red-800"
+                >
+                  <Trash2 size={20} />
+                </button>
+              </div>
+            )
+          },
         ]}
-        data={suppliers.map(supplier => ({
-          ...supplier,
-          photo: supplier.image_url ? (
-            <img
-              src={supplier.image_url}
-              alt="photo"
-              className="h-10 w-10 rounded-full object-cover border"
-            />
-          ) : "-",
-          actions: (
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => handleEdit(supplier)}
-                aria-label="Modifier"
-                className="text-blue-600 hover:text-blue-800"
-              >
-                <Edit size={20} />
-              </button>
-              <button
-                onClick={() => handleDelete(supplier.id)}
-                aria-label="Supprimer"
-                className="text-red-600 hover:text-red-800"
-              >
-                <Trash2 size={20} />
-              </button>
-            </div>
-          ),
-        }))}
+        data={suppliers}
         loading={loading}
       />
       {modalOpen && (

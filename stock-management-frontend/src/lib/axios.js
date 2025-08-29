@@ -1,8 +1,10 @@
 import axios from "axios";
 
 const api = axios.create({
+  // Dev: VITE_API_URL=http://127.0.0.1:8000/api
+  // Prod: VITE_API_URL=https://VOTRE-BACKEND.onrender.com/api
   baseURL: import.meta.env.VITE_API_URL || "/api",
-  timeout: 10000,
+  timeout: 15000,
 });
 
 api.interceptors.request.use(

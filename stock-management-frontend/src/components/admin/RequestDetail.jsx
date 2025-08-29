@@ -1,26 +1,30 @@
 import api from "../../lib/axios";
 import { useState } from "react";
 
+function buildBackendBase() {
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  return apiUrl.replace(/\/api\/?$/, "") || "http://127.0.0.1:8000";
+}
+
 export default function RequestDetail({ request, onClose, onUpdated }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   if (!request) return null;
 
-  // Récupérer l'URL de la photo
   const getPhotoUrl = () => {
-    if (request?.photo_url) {
-      return request.photo_url;
-    }
-    if (request?.photo) {
-      return `${
-        import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
-      }/storage/${request.photo}`;
-    }
+    // 1) URL Cloudinary/absolue
+    if (request?.photo && /^https?:\/\//i.test(request.photo)) return request.photo;
+    if (request?.photo_url && /^https?:\/\//i.test(request.photo_url)) return request.photo_url;
+
+    // 2) Base backend depuis VITE_API_URL
+    const base = buildBackendBase();
+    if (request?.photo_url) return request.photo_url;
+    if (request?.photo) return `${base}/storage/${request.photo}`;
+
     return null;
   };
 
-  // Action d'approbation / refus
   const handleAction = async (action) => {
     setLoading(true);
     setError("");
@@ -37,7 +41,6 @@ export default function RequestDetail({ request, onClose, onUpdated }) {
     }
   };
 
-  // Suppression de la demande de création de compte
   const handleDeleteRequest = async () => {
     if (!window.confirm("Voulez-vous vraiment supprimer cette demande ?")) {
       return;
@@ -60,7 +63,6 @@ export default function RequestDetail({ request, onClose, onUpdated }) {
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
         <h2 className="text-xl font-bold mb-4">Détail de la demande</h2>
 
-        {/* Image de profil */}
         <div className="flex justify-center mb-4">
           {getPhotoUrl() ? (
             <img
@@ -75,7 +77,6 @@ export default function RequestDetail({ request, onClose, onUpdated }) {
           )}
         </div>
 
-        {/* Informations */}
         <div className="mb-2">
           <strong>Prénom :</strong> {request.prenom}
         </div>
@@ -107,7 +108,6 @@ export default function RequestDetail({ request, onClose, onUpdated }) {
 
         {error && <div className="text-red-600 text-sm mb-2">{error}</div>}
 
-        {/* Boutons */}
         <div className="flex justify-end gap-2 mt-4 flex-wrap">
           <button
             onClick={onClose}
@@ -117,7 +117,6 @@ export default function RequestDetail({ request, onClose, onUpdated }) {
             Fermer
           </button>
 
-          {/* Bouton supprimer la demande */}
           <button
             onClick={handleDeleteRequest}
             className="px-4 py-2 rounded bg-red-700 text-white"
@@ -126,7 +125,6 @@ export default function RequestDetail({ request, onClose, onUpdated }) {
             Supprimer la demande
           </button>
 
-          {/* Actions de statut */}
           {request.statut === "en_attente" && (
             <>
               <button

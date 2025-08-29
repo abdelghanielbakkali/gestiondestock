@@ -4,13 +4,17 @@ import RequestDetail from "../../components/admin/RequestDetail";
 import Table from "../../components/admin/Table";
 import { Eye, Trash2 } from "lucide-react";
 
+function buildBackendBase() {
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  return apiUrl.replace(/\/api\/?$/, "") || "http://127.0.0.1:8000";
+}
+
 export default function Requests() {
   const [requests, setRequests] = useState([]);
-  const [status, setStatus] = useState("all"); // Par défaut : tous les statuts
+  const [status, setStatus] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
 
-  // Récupération des demandes
   const fetchRequests = async () => {
     try {
       const params = status !== "all" ? { statut: status } : {};
@@ -25,13 +29,11 @@ export default function Requests() {
     fetchRequests();
   }, [status]);
 
-  // Ouvrir le détail
   const handleDetail = (req) => {
     setSelectedRequest(req);
     setModalOpen(true);
   };
 
-  // Supprimer demande de création de compte
   const handleDeleteRequest = async (id) => {
     if (window.confirm("Voulez-vous vraiment supprimer cette demande ?")) {
       try {
@@ -45,16 +47,16 @@ export default function Requests() {
     }
   };
 
-  // Générer URL de photo
   const getPhotoUrl = (req) => {
-    if (req?.photo_url) {
-      return req.photo_url;
-    }
-    if (req?.photo) {
-      return `${
-        import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
-      }/storage/${req.photo}`;
-    }
+    // 1) URL Cloudinary/absolue
+    if (req?.photo && /^https?:\/\//i.test(req.photo)) return req.photo;
+    if (req?.photo_url && /^https?:\/\//i.test(req.photo_url)) return req.photo_url;
+
+    // 2) Base backend depuis VITE_API_URL
+    const base = buildBackendBase();
+    if (req?.photo_url) return req.photo_url;
+    if (req?.photo) return `${base}/storage/${req.photo}`;
+
     return null;
   };
 
@@ -64,7 +66,6 @@ export default function Requests() {
         <h2 className="text-2xl font-bold text-blue-800">Demandes de création de compte</h2>
       </div>
 
-      {/* Filtre par statut */}
       <div className="flex justify-between mb-4">
         <select
           className="border rounded px-3 py-2"
@@ -78,7 +79,6 @@ export default function Requests() {
         </select>
       </div>
 
-      {/* Tableau des demandes */}
       <Table
         columns={[
           { 
@@ -151,7 +151,6 @@ export default function Requests() {
         emptyMessage="Aucune demande trouvée."
       />
 
-      {/* Modal détail */}
       {modalOpen && (
         <RequestDetail
           request={selectedRequest}

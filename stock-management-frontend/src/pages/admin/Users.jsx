@@ -5,6 +5,11 @@ import Modal from "../../components/admin/Modal";
 import UserForm from "../../components/admin/UserForm";
 import { UserPlus, Edit, Trash2, Search } from "lucide-react";
 
+function buildBackendBase() {
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  return apiUrl.replace(/\/api\/?$/, "") || "http://127.0.0.1:8000";
+}
+
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState({});
@@ -13,14 +18,12 @@ export default function Users() {
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
 
-  // Modals
   const [modalOpen, setModalOpen] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Fetch users
   const loadUsers = async () => {
     setLoading(true);
     const params = { page, search, role: roleFilter };
@@ -35,28 +38,42 @@ export default function Users() {
 
   useEffect(() => {
     loadUsers();
-    // eslint-disable-next-line
   }, [page, search, roleFilter]);
+
+  const getPhotoUrl = (user) => {
+    // 1) URL Cloudinary/absolue
+    if (user?.photo && /^https?:\/\//i.test(user.photo)) return user.photo;
+    if (user?.photo_url && /^https?:\/\//i.test(user.photo_url)) return user.photo_url;
+
+    // 2) Base backend depuis VITE_API_URL
+    const base = buildBackendBase();
+    if (user?.photo_url) return user.photo_url;
+    if (user?.photo) return `${base}/storage/${user.photo}`;
+
+    return null;
+  };
 
   const columns = [
     {
       key: "photo",
       label: "Photo",
-      render: (user) =>
-        user.photo ? (
-          <img
-                  src={
-                    user.photo_url ??
-                    (user.photo ? `${import.meta.env.VITE_API_BASE_URL}/storage/${user.photo}` : "")
-                  }
-                  alt="profil"
-                  className="w-10 h-10 rounded-full object-cover"
-                />  
-        ) : (
+      render: (user) => {
+        const photoUrl = getPhotoUrl(user);
+        if (photoUrl) {
+          return (
+            <img
+              src={photoUrl}
+              alt="profil"
+              className="w-10 h-10 rounded-full object-cover"
+            />
+          );
+        }
+        return (
           <span className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
             {user.prenom?.[0] || "?"}
           </span>
-        ),
+        );
+      },
     },
     { key: "fullName", label: "Nom", render: (user) => `${user.prenom} ${user.nom}` },
     { key: "email", label: "Email" },
@@ -73,7 +90,6 @@ export default function Users() {
     { key: "adresse", label: "Adresse" },
   ];
 
-  // Pagination helpers
   const handlePageChange = (newPage) => {
     setPage(newPage);
   };
@@ -143,7 +159,6 @@ export default function Users() {
           </>
         )}
       />
-      {/* Pagination */}
       <div className="flex justify-end mt-4 gap-2">
         {meta?.links?.map(
           (link, idx) =>
@@ -163,7 +178,6 @@ export default function Users() {
             )
         )}
       </div>
-      {/* Modal Ajout/Modif */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -195,14 +209,13 @@ export default function Users() {
           }}
         />
       </Modal>
-      {/* Modal Confirmation Suppression */}
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         title="Confirmer la suppression"
       >
         <div className="space-y-4">
-          <p>Voulez-vous vraiment supprimer cet utilisateur ?</p>
+          <p>Voulez-vous vraiment supprimer cet utilisateur ?</p>
           <div className="flex gap-4 justify-end">
             <button
               className="px-4 py-2 rounded bg-gray-200"

@@ -11,6 +11,25 @@ import Modal from "../../components/admin/Modal";
 import ProductForm from "../../components/admin/ProductForm";
 import { Plus, Search } from "lucide-react";
 
+function buildImageSrc(product) {
+  // 1) URL Cloudinary/absolue
+  if (product?.image && /^https?:\/\//i.test(product.image)) return product.image;
+  if (product?.image_url && /^https?:\/\//i.test(product.image_url)) return product.image_url;
+
+  // 2) Base backend depuis VITE_API_URL
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  const backendBase = apiUrl.replace(/\/api\/?$/, "") || "http://127.0.0.1:8000";
+
+  // 3) URL déjà construite par le backend
+  if (product?.image_url) return product.image_url;
+
+  // 4) Chemin relatif → prefixer /storage/
+  if (product?.image) return `${backendBase}/storage/${product.image}`;
+
+  // 5) Fallback
+  return "/src/assets/stock-management.jpeg";
+}
+
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [meta, setMeta] = useState({});
@@ -66,7 +85,6 @@ export default function Products() {
 
   return (
     <div>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-blue-800">Produits</h2>
         <button
@@ -81,7 +99,6 @@ export default function Products() {
         </button>
       </div>
 
-      {/* Filtres */}
       <div className="flex flex-col sm:flex-row gap-4 mb-4">
         <div className="relative flex-1 max-w-md">
           <input
@@ -113,7 +130,6 @@ export default function Products() {
         </select>
       </div>
 
-      {/* Cards grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {loading ? (
           <div className="col-span-full text-center py-8">
@@ -142,7 +158,6 @@ export default function Products() {
         )}
       </div>
 
-      {/* Pagination */}
       <div className="flex justify-end mt-4 gap-2 flex-wrap">
         {meta?.links?.map((link, idx) => {
           let label = link.label;
@@ -176,7 +191,6 @@ export default function Products() {
         })}
       </div>
 
-      {/* Modal Ajout/Modif */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -210,7 +224,6 @@ export default function Products() {
         />
       </Modal>
 
-      {/* Modal Confirmation Suppression */}
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
@@ -243,7 +256,6 @@ export default function Products() {
         </div>
       </Modal>
 
-      {/* Modal Détail Produit - image fixe */}
       <Modal
         open={!!viewProduct}
         onClose={() => setViewProduct(null)}
@@ -251,20 +263,15 @@ export default function Products() {
       >
         {viewProduct && (
           <div className="max-h-[80vh] overflow-y-auto px-4 space-y-6">
-            {/* Image produit fixe 200x200 */}
             <div className="flex justify-center">
               <img
-                src={
-                  viewProduct.image_url ||
-                  viewProduct.image ||
-                  "/src/assets/stock-management.jpeg"
-                }
+                src={buildImageSrc(viewProduct)}
                 alt={viewProduct.nom}
                 className="w-[200px] h-[200px] object-cover rounded-2xl shadow-lg border"
+                onError={(e) => { e.currentTarget.src = "/src/assets/stock-management.jpeg"; }}
               />
             </div>
 
-            {/* Nom et description */}
             <div className="text-center">
               <h3 className="text-xl sm:text-2xl font-bold text-blue-800">
                 {viewProduct.nom}
@@ -276,7 +283,6 @@ export default function Products() {
               )}
             </div>
 
-            {/* Infos principales */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-blue-50 p-3 rounded-xl text-center">
                 <p className="text-xs text-slate-500">Stock</p>
