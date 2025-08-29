@@ -1,6 +1,6 @@
 import { Routes, Route } from "react-router-dom";
-import Header from "../../components/fournisseur/Header";
-import Sidebar from "../../components/fournisseur/Sidebar";
+import Header from "../../components/fournisseur/header";
+import Sidebar from "../../components/fournisseur/sidebar";
 import Commandes from "./commandes";
 import Livraisons from "./livraisons";
 import Rapports from "./rapports";
