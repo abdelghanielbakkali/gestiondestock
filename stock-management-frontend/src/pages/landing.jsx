@@ -2,6 +2,7 @@ import Navbar from "../components/ui/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 
 export default function Landing() {
   return (
@@ -29,7 +30,7 @@ export default function Landing() {
             asChild
             className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg rounded-full shadow-md transition-all"
           >
-            <a href="/auth">Commencer</a>
+            <Link to="/auth">Commencer</Link>
           </Button>
         </motion.div>
 
