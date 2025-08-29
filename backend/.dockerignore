@@ -1,10 +1,12 @@
 .git
 vendor
 node_modules
+storage/
 storage/logs
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+public/storage/
 .env
 
 # Exclure les dossiers frontend

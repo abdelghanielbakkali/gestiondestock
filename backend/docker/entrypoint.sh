@@ -1,44 +1,55 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
-echo "🚀 Starting Laravel application..."
+echo "🚀 Démarrage de l'application Laravel..."
 
-# Génère la clé si absente
-if [ -z "$APP_KEY" ] || [[ "$APP_KEY" == "base64:"* && ${#APP_KEY} -lt 10 ]]; then
-  echo "🔑 Generating application key..."
-  php artisan key:generate --force || true
+# Attendre que la base de données soit disponible (si DB_HOST est défini)
+if [ ! -z "$DB_HOST" ]; then
+    echo "⏳ Attente de la base de données..."
+    while ! nc -z $DB_HOST ${DB_PORT:-3306}; do
+        sleep 1
+    done
+    echo "✅ Base de données accessible"
 fi
 
-# Caches Laravel
-echo "📦 Clearing and caching Laravel..."
-php artisan config:clear || true
-php artisan route:clear || true
-php artisan view:clear || true
-php artisan cache:clear || true
+# Créer le fichier .env s'il n'existe pas
+if [ ! -f .env ]; then
+    echo "📝 Création du fichier .env..."
+    cp .env.example .env
+fi
 
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
+# Générer la clé d'application si elle n'existe pas
+if ! grep -q "APP_KEY=base64:" .env; then
+    echo "🔑 Génération de la clé d'application..."
+    php artisan key:generate --no-interaction
+fi
 
-# Attendre que la base de données soit prête
-echo "⏳ Waiting for database connection..."
-until php artisan tinker --execute="DB::connection()->getPdo();" 2>/dev/null; do
-  echo "Database not ready, waiting..."
-  sleep 2
-done
+# Optimiser l'autoloader
+echo "⚡ Optimisation de l'autoloader..."
+composer dump-autoload --optimize --classmap-authoritative
 
-# Migrations et seeds
-echo "🗄️ Running database migrations..."
-php artisan migrate --force || true
+# Mettre en cache les configurations (seulement en production)
+if [ "$APP_ENV" = "production" ]; then
+    echo "🏗️  Mise en cache des configurations..."
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+fi
 
-echo "🌱 Running database seeds..."
-php artisan db:seed --force || true
+# Exécuter les migrations (optionnel - décommenter si nécessaire)
+# echo "🔄 Exécution des migrations..."
+# php artisan migrate --force --no-interaction
 
-# Storage link
-echo "🔗 Creating storage link..."
+# Créer le lien symbolique pour le stockage public
+echo "🔗 Création du lien symbolique pour le stockage..."
 php artisan storage:link || true
 
-echo "✅ Laravel application ready!"
+# Définir les permissions finales
+echo "🔐 Configuration des permissions..."
+chown -R application:application /app/storage /app/bootstrap/cache
+chmod -R 775 /app/storage /app/bootstrap/cache
 
-# Démarre nginx + php-fpm (image webdevops)
-exec /usr/bin/supervisord -n -c /opt/docker/etc/supervisor.conf
+echo "✅ Application Laravel prête !"
+
+# Démarrer le serveur web
+exec /opt/docker/bin/entrypoint.sh supervisord
