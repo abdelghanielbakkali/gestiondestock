@@ -6,3 +6,44 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 .env
+
+# Exclure les dossiers frontend
+frontend-admin/
+frontend-fournisseur/
+stock-management-frontend/
+
+# Exclure les fichiers de configuration frontend
+vercel.json
+package.json
+package-lock.json
+vite.config.js
+tailwind.config.cjs
+postcss.config.cjs
+eslint.config.js
+components.json
+
+# Exclure les assets frontend
+*.jsx
+*.tsx
+*.css
+*.scss
+*.sass
+*.less
+*.styl
+*.vue
+*.svelte
+*.astro
+
+# Exclure les fichiers de build frontend
+dist/
+build/
+.next/
+.nuxt/
+.output/
+
+# Exclure les fichiers de développement
+*.log
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db

@@ -14,10 +14,12 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-COPY composer.json composer.lock ./
+# Copier les fichiers de dépendances du backend
+COPY backend/composer.json backend/composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
-COPY . .
+# Copier tout le code du backend
+COPY backend/ .
 
 RUN mkdir -p storage/framework/{cache,views,sessions} \
  && chown -R application:application storage bootstrap/cache \
@@ -26,7 +28,8 @@ RUN mkdir -p storage/framework/{cache,views,sessions} \
 RUN php artisan route:clear || true \
  && php artisan config:clear || true
 
-COPY docker/entrypoint.sh /entrypoint.sh
+# Copier le script d'entrée
+COPY backend/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 80
