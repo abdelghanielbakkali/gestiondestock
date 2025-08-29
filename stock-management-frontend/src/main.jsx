@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Landing from "./pages/Landing";
+import Landing from "./pages/landing";
 import Auth from "./pages/Auth/Auth";
 import Dashboard from "./pages/admin/Dashboard";
 import GestionnaireDashboard from "./pages/gestionnaire/GestionnaireDashboard";
