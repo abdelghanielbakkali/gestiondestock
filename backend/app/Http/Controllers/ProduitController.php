@@ -6,39 +6,96 @@ use App\Models\Produit;
 use App\Models\User;
 use App\Models\Notification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProduitController extends Controller
 {
-    // Lister tous les produits avec filtres et pagination
     public function index(Request $request)
     {
         $query = Produit::with(['categorie', 'fournisseur']);
-        
-        // Recherche par nom
+
         if ($request->has('search') && $request->search) {
             $query->where('nom', 'like', "%{$request->search}%");
         }
 
-        // Filtre par catégorie
         if ($request->has('categorie_id')) {
             $query->where('categorie_id', $request->categorie_id);
         }
 
-        // Filtre par date de création minimale
         if ($request->has('date_min')) {
             $query->whereDate('created_at', '>=', $request->date_min);
         }
 
-        // Filtre par date de création maximale
         if ($request->has('date_max')) {
             $query->whereDate('created_at', '<=', $request->date_max);
         }
 
-        $produits = $query->paginate(20);
-        return response()->json($produits);
+        return response()->json($query->paginate(20));
     }
 
-    // Créer un nouveau produit (avec upload d'image)
+    private function uploadToCloudinary($file)
+    {
+        try {
+            // Vérifier si les classes Cloudinary existent
+            if (!class_exists('\Cloudinary\Configuration\Configuration') || !class_exists('\Cloudinary\Api\Upload\UploadApi')) {
+                throw new \Exception('Package Cloudinary non installé');
+            }
+
+            $cloudinaryUrl = env('CLOUDINARY_URL');
+            $canUseCloudinary = $cloudinaryUrl
+                && str_starts_with($cloudinaryUrl, 'cloudinary://')
+                && !str_contains($cloudinaryUrl, '<your_api_key>')
+                && !str_contains($cloudinaryUrl, '<your_api_secret>');
+
+            if (!$canUseCloudinary) {
+                throw new \Exception('Configuration Cloudinary invalide');
+            }
+
+            // Configuration Cloudinary
+            \Cloudinary\Configuration\Configuration::instance($cloudinaryUrl);
+            
+            // Upload vers Cloudinary
+            $uploadApi = new \Cloudinary\Api\Upload\UploadApi();
+            $uploadResult = $uploadApi->upload(
+                $file->getRealPath(),
+                [
+                    'folder' => 'produits',
+                    'resource_type' => 'image',
+                    'transformation' => [
+                        'quality' => 'auto:good',
+                        'fetch_format' => 'auto'
+                    ]
+                ]
+            );
+
+            $imageUrl = $uploadResult['secure_url'] ?? $uploadResult['url'] ?? null;
+
+            if (!$imageUrl) {
+                throw new \Exception('Réponse Cloudinary sans URL');
+            }
+
+            \Log::info('Upload Cloudinary réussi', ['url' => $imageUrl]);
+            return $imageUrl;
+
+        } catch (\Exception $e) {
+            \Log::error('Erreur upload Cloudinary', ['error' => $e->getMessage()]);
+            throw $e;
+        }
+    }
+
+    private function handleImageUpload($file)
+    {
+        try {
+            // Essayer d'uploader vers Cloudinary
+            return $this->uploadToCloudinary($file);
+        } catch (\Exception $e) {
+            // Fallback vers le stockage local
+            \Log::warning('Fallback vers stockage local', ['reason' => $e->getMessage()]);
+            return $file->store('produits', 'public');
+        }
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -53,42 +110,19 @@ class ProduitController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('produits', 'public');
-            $validated['image'] = $path;
+            $validated['image'] = $this->handleImageUpload($request->file('image'));
         }
 
         $produit = Produit::create($validated);
 
-        // Notification stock bas (création)
+        // Gestion des alertes de stock
         if ($produit->stock <= $produit->seuil_alerte) {
-            $adminsEtGestionnaires = User::whereIn('role', ['admin', 'gestionnaire'])->get();
-            foreach ($adminsEtGestionnaires as $user) {
-                $notifExists = Notification::where([
-                    ['user_id', $user->id],
-                    ['type', 'stock_bas'],
-                    ['titre', 'Stock bas'],
-                    ['est_lue', false],
-                ])
-                ->where('message', "Le produit {$produit->nom} a un stock de {$produit->stock} (seuil {$produit->seuil_alerte}).")
-                ->exists();
-
-                if (!$notifExists) {
-                    Notification::create([
-                        'titre' => 'Stock bas',
-                        'type' => 'stock_bas',
-                        'message' => "Le produit {$produit->nom} a un stock de {$produit->stock} (seuil {$produit->seuil_alerte}).",
-                        'user_id' => $user->id,
-                        'date_creation' => now(),
-                        'est_lue' => false,
-                    ]);
-                }
-            }
+            $this->createStockAlert($produit);
         }
 
         return response()->json($produit->load(['categorie', 'fournisseur']), 201);
     }
 
-    // Afficher un produit spécifique
     public function show($id)
     {
         $produit = Produit::with(['categorie', 'fournisseur'])->find($id);
@@ -98,7 +132,6 @@ class ProduitController extends Controller
         return response()->json($produit);
     }
 
-    // Mettre à jour un produit (avec upload d'image)
     public function update(Request $request, $id)
     {
         $produit = Produit::find($id);
@@ -118,58 +151,43 @@ class ProduitController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('produits', 'public');
-            $validated['image'] = $path;
+            // Supprimer l'ancienne image locale si elle existe
+            if ($produit->image && !str_starts_with($produit->image, 'http') && Storage::disk('public')->exists($produit->image)) {
+                Storage::disk('public')->delete($produit->image);
+            }
+
+            $validated['image'] = $this->handleImageUpload($request->file('image'));
         }
 
         $produit->update($validated);
 
-        // Notification stock bas (modification)
+        // Gestion des alertes de stock
         if ($produit->stock <= $produit->seuil_alerte) {
-            $adminsEtGestionnaires = User::whereIn('role', ['admin', 'gestionnaire'])->get();
-            foreach ($adminsEtGestionnaires as $user) {
-                $notifExists = Notification::where([
-                    ['user_id', $user->id],
-                    ['type', 'stock_bas'],
-                    ['titre', 'Stock bas'],
-                    ['est_lue', false],
-                ])
-                ->where('message', "Le produit {$produit->nom} a un stock de {$produit->stock} (seuil {$produit->seuil_alerte}).")
-                ->exists();
-
-                if (!$notifExists) {
-                    Notification::create([
-                        'titre' => 'Stock bas',
-                        'type' => 'stock_bas',
-                        'message' => "Le produit {$produit->nom} a un stock de {$produit->stock} (seuil {$produit->seuil_alerte}).",
-                        'user_id' => $user->id,
-                        'date_creation' => now(),
-                        'est_lue' => false,
-                    ]);
-                }
-            }
+            $this->createStockAlert($produit);
         }
 
         return response()->json($produit->load(['categorie', 'fournisseur']));
     }
 
-    // Supprimer un produit
     public function destroy($id)
     {
         $produit = Produit::find($id);
         if (!$produit) {
             return response()->json(['message' => 'Produit non trouvé'], 404);
         }
+
+        // Supprimer l'image locale si elle existe
+        if ($produit->image && !str_starts_with($produit->image, 'http') && Storage::disk('public')->exists($produit->image)) {
+            Storage::disk('public')->delete($produit->image);
+        }
+
         $produit->delete();
         return response()->json(['message' => 'Produit supprimé avec succès']);
     }
 
-    // Produits du fournisseur connecté
     public function mesProduits(Request $request)
     {
         $user = $request->user();
-        
-        // Vérifie que l'utilisateur est bien un fournisseur et qu'il a un fournisseur lié
         if ($user->role !== 'fournisseur' || !$user->fournisseur) {
             return response()->json(['message' => 'Non autorisé'], 403);
         }
@@ -177,21 +195,46 @@ class ProduitController extends Controller
         $query = Produit::with(['categorie', 'fournisseur'])
             ->where('fournisseur_id', $user->fournisseur->id);
 
-        // Recherche par nom
         if ($request->has('search') && $request->search) {
             $query->where('nom', 'ILIKE', '%' . $request->search . '%');
         }
 
-        // Filtre par catégorie
         if ($request->has('categorie_id') && $request->categorie_id) {
             $query->where('categorie_id', $request->categorie_id);
         }
 
-        // Filtre par stock (alerte)
         if ($request->has('alerte_stock') && $request->alerte_stock) {
             $query->whereRaw('stock <= seuil_alerte');
         }
 
         return response()->json($query->orderBy('created_at', 'desc')->paginate(20));
+    }
+
+    private function createStockAlert($produit)
+    {
+        $adminsEtGestionnaires = User::whereIn('role', ['admin', 'gestionnaire'])->get();
+        
+        foreach ($adminsEtGestionnaires as $user) {
+            $message = "Le produit {$produit->nom} a un stock de {$produit->stock} (seuil {$produit->seuil_alerte}).";
+            
+            $notifExists = Notification::where([
+                ['user_id', $user->id],
+                ['type', 'stock_bas'],
+                ['titre', 'Stock bas'],
+                ['est_lue', false],
+                ['message', $message]
+            ])->exists();
+
+            if (!$notifExists) {
+                Notification::create([
+                    'titre' => 'Stock bas',
+                    'type' => 'stock_bas',
+                    'message' => $message,
+                    'user_id' => $user->id,
+                    'date_creation' => now(),
+                    'est_lue' => false,
+                ]);
+            }
+        }
     }
 }

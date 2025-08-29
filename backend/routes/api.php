@@ -22,7 +22,6 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 // Routes accessibles à tous les utilisateurs connectés
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
-    Route::put('/me', [AuthController::class, 'updateProfile']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     //Route::get('/notifications/mes', [NotificationController::class, 'mesNotifications']);
     Route::get('/livraisons/mes', [LivraisonController::class, 'mesLivraisons']);
@@ -33,9 +32,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']); // à adapter si besoin pour filtrer par fournisseur
 });
 
+//Route::middleware(['auth:sanctum', 'role:admin,gestionnaire'])->group(function () {
+    //Route::get('/rapports/stats', [\App\Http\Controllers\RapportController::class, 'stats']);
 
+//});
 
-Route::middleware(['auth:sanctum', 'role:admin,gestionnaire,fournisseur'])->delete(
+Route::middleware(['auth:sanctum', 'role:admin,fournisseur'])->delete(
     'commandes/{id}',
     [CommandeController::class, 'destroy']
 );
@@ -90,5 +92,4 @@ Route::middleware(['auth:sanctum', 'role:fournisseur'])->group(function () {
     // Pour mettre à jour une livraison (marquer livrée/annulée)
     Route::put('livraisons/{id}', [LivraisonController::class, 'update']);
     Route::get('/rapports/mes', [\App\Http\Controllers\RapportController::class, 'mesRapports']);
-    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 });

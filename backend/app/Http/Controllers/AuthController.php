@@ -6,17 +6,79 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Password;
 use App\Models\DemandeCreationCompte;
 use App\Models\Notification;
-use carbon\Carbon;
+use Carbon\Carbon;
 use App\Notifications\CustomResetPassword;
 use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
-   // Inscription : crée une demande, pas un user
+    private function uploadToCloudinary($file, $folder = 'photos')
+    {
+        try {
+            // Vérifier si les classes Cloudinary existent
+            if (!class_exists('\Cloudinary\Configuration\Configuration') || !class_exists('\Cloudinary\Api\Upload\UploadApi')) {
+                throw new \Exception('Package Cloudinary non installé');
+            }
+
+            $cloudinaryUrl = env('CLOUDINARY_URL');
+            $canUseCloudinary = $cloudinaryUrl
+                && str_starts_with($cloudinaryUrl, 'cloudinary://')
+                && !str_contains($cloudinaryUrl, '<your_api_key>')
+                && !str_contains($cloudinaryUrl, '<your_api_secret>');
+
+            if (!$canUseCloudinary) {
+                throw new \Exception('Configuration Cloudinary invalide');
+            }
+
+            // Configuration Cloudinary
+            \Cloudinary\Configuration\Configuration::instance($cloudinaryUrl);
+            
+            // Upload vers Cloudinary
+            $uploadApi = new \Cloudinary\Api\Upload\UploadApi();
+            $uploadResult = $uploadApi->upload(
+                $file->getRealPath(),
+                [
+                    'folder' => $folder,
+                    'resource_type' => 'image',
+                    'transformation' => [
+                        'quality' => 'auto:good',
+                        'fetch_format' => 'auto'
+                    ]
+                ]
+            );
+
+            $imageUrl = $uploadResult['secure_url'] ?? $uploadResult['url'] ?? null;
+
+            if (!$imageUrl) {
+                throw new \Exception('Réponse Cloudinary sans URL');
+            }
+
+            \Log::info('Upload Cloudinary réussi (AuthController)', ['url' => $imageUrl]);
+            return $imageUrl;
+
+        } catch (\Exception $e) {
+            \Log::error('Erreur upload Cloudinary (AuthController)', ['error' => $e->getMessage()]);
+            throw $e;
+        }
+    }
+
+    private function handleImageUpload($file, $folder = 'photos')
+    {
+        try {
+            // Essayer d'uploader vers Cloudinary
+            return $this->uploadToCloudinary($file, $folder);
+        } catch (\Exception $e) {
+            // Fallback vers le stockage local
+            \Log::warning('Fallback vers stockage local (AuthController)', ['reason' => $e->getMessage()]);
+            $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+            return $file->storeAs($folder, $filename, 'public');
+        }
+    }
+
+    // Inscription : crée une demande, pas un user
     public function register(Request $request)
     {
         $validated = $request->validate([
@@ -29,14 +91,10 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
-        $photoUrl = null;
+
         $photoPath = null;
         if ($request->hasFile('photo')) {
-            $file = $request->file('photo');
-            $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-            $photoPath = $file->storeAs('photos', $filename, 'public'); // stockage
-            $photoUrl = Storage::url($photoPath); // /storage/photos/...
-
+            $photoPath = $this->handleImageUpload($request->file('photo'), 'photos');
         }
 
         DemandeCreationCompte::create([
@@ -47,9 +105,10 @@ class AuthController extends Controller
             'role_demande' => $validated['role'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
-             'photo' => $photoPath,
+            'photo' => $photoPath,
             'statut' => 'en_attente',
         ]);
+
         $admins = User::where('role', 'admin')->get();
         foreach ($admins as $admin) {
             Notification::create([
@@ -63,10 +122,11 @@ class AuthController extends Controller
         }
 
         return response()->json([
-    'message' => 'Votre demande a été envoyée. Un administrateur doit la valider.',], 201);
+            'message' => 'Votre demande a été envoyée. Un administrateur doit la valider.',
+        ], 201);
     }
 
-     // Connexion : refuse si le user n'existe pas mais une demande existe
+    // Connexion
     public function login(Request $request)
     {
         $request->validate([
@@ -99,7 +159,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // ✅ Déconnexion
+    // Déconnexion
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
@@ -109,17 +169,17 @@ class AuthController extends Controller
         ]);
     }
 
-    // ✅ Infos utilisateur connecté
+    // Infos utilisateur connecté
     public function me(Request $request)
     {
         return response()->json($request->user());
     }
 
-    // ✅ Mise à jour du profil utilisateur
-     public function updateProfile(Request $request)
+    // Mise à jour du profil utilisateur
+    public function updateProfile(Request $request)
     {
         $user = $request->user();
-        
+
         $validated = $request->validate([
             'prenom' => 'required|string|max:255',
             'nom' => 'required|string|max:255',
@@ -128,46 +188,42 @@ class AuthController extends Controller
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
-        // Gestion de la photo
         if ($request->hasFile('photo')) {
-            // Supprimer l'ancienne photo si elle existe
-            if ($user->photo && Storage::disk('public')->exists($user->photo)) {
+            // Supprimer l'ancienne photo locale si elle existe
+            if ($user->photo && !str_starts_with($user->photo, 'http') && Storage::disk('public')->exists($user->photo)) {
                 Storage::disk('public')->delete($user->photo);
             }
-            
-            $file = $request->file('photo');
-            $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-            $photoPath = $file->storeAs('photos', $filename, 'public');
-            $validated['photo'] = $photoPath;
+
+            $validated['photo'] = $this->handleImageUpload($request->file('photo'), 'photos');
         }
 
         $user->update($validated);
 
         return response()->json([
             'message' => 'Profil mis à jour avec succès',
-            'user' => $user->fresh()
+            'user' => $user->fresh(),
         ]);
     }
 
-    // ✅ Envoi de l'email de réinitialisation de mot de passe
+    // Envoi email reset
     public function forgotPassword(Request $request)
     {
-       $request->validate([
-        'email' => 'required|email|exists:users,email',
-    ]);
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
 
-    $user = User::where('email', $request->email)->first();
+        $user = User::where('email', $request->email)->first();
 
-    if ($user) {
-        $token = Password::broker()->createToken($user);
-        $user->notify(new CustomResetPassword($token, $user->email));
-        return response()->json(['message' => 'Lien de réinitialisation envoyé !']);
+        if ($user) {
+            $token = Password::broker()->createToken($user);
+            $user->notify(new CustomResetPassword($token, $user->email));
+            return response()->json(['message' => 'Lien de réinitialisation envoyé !']);
+        }
+
+        return response()->json(['message' => 'Impossible d\'envoyer le lien.'], 500);
     }
 
-    return response()->json(['message' => 'Impossible d\'envoyer le lien.'], 500);
-    }
-
-    // ✅ Réinitialisation du mot de passe via token
+    // Reset mot de passe
     public function resetPassword(Request $request)
     {
         $request->validate([
@@ -192,4 +248,5 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'Échec de la réinitialisation.'], 500);
     }
+    //final version
 }

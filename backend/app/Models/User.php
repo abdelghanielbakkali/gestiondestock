@@ -23,9 +23,11 @@ class User extends Authenticatable
         'photo',
         'photo_url',
     ];
-     protected $casts = [
-      'email_verified_at' => 'datetime',
-  ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+    ];
+
     protected $appends = ['photo_url'];
 
     protected $hidden = [
@@ -33,7 +35,6 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    // Relations
     public function commandes()
     {
         return $this->hasMany(Commande::class, 'user_id');
@@ -48,18 +49,24 @@ class User extends Authenticatable
     {
         return $this->hasMany(Rapport::class, 'user_id');
     }
-     public function fournisseur()
-  {
-      return $this->hasOne(Fournisseur::class, 'user_id');
-  }
-  public function getPhotoUrlAttribute()
-{
-    return $this->photo ? asset('storage/' . $this->photo) : null;
-}
-public function sendPasswordResetNotification($token)
-{
-     
-    $this->notify(new CustomResetPassword($token, $this->email));
-}
 
+    public function fournisseur()
+    {
+        return $this->hasOne(Fournisseur::class, 'user_id');
+    }
+
+    public function getPhotoUrlAttribute()
+    {
+        if (!$this->photo) {
+            return null;
+        }
+        return str_starts_with($this->photo, 'http')
+            ? $this->photo
+            : asset('storage/' . $this->photo);
+    }
+
+    public function sendPasswordResetNotification($token)
+    {
+        $this->notify(new CustomResetPassword($token, $this->email));
+    }
 }
